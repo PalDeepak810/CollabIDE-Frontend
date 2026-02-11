@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebSocket Test</title>
+    <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/stompjs@2.3.3/lib/stomp.min.js"></script>
+</head>
+<body>
+    <h1>WebSocket Connection Test</h1>
+    <div id="status">Connecting...</div>
+    <div id="messages"></div>
+    
+    <script>
+        const statusDiv = document.getElementById('status');
+        const messagesDiv = document.getElementById('messages');
+        
+        function log(message) {
+            const p = document.createElement('p');
+            p.textContent = new Date().toLocaleTimeString() + ': ' + message;
+            messagesDiv.appendChild(p);
+        }
+        
+        log('Attempting to connect to ws://127.0.0.1:8080/ws');
+        
+        const socket = new SockJS('http://127.0.0.1:8080/ws');
+        const stompClient = Stomp.over(socket);
+        
+        stompClient.debug = (str) => {
+            log('STOMP: ' + str);
+        };
+        
+        stompClient.connect({}, 
+            () => {
+                statusDiv.textContent = 'Connected!';
+                statusDiv.style.color = 'green';
+                log('Successfully connected to WebSocket!');
+                
+                // Subscribe to a test topic
+                stompClient.subscribe('/topic/test', (message) => {
+                    log('Received: ' + message.body);
+                });
+                
+                log('Subscribed to /topic/test');
+            },
+            (error) => {
+                statusDiv.textContent = 'Connection Failed';
+                statusDiv.style.color = 'red';
+                log('Error: ' + error);
+            }
+        );
+    </script>
+</body>
+</html>
