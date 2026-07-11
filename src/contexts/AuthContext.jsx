@@ -5,7 +5,7 @@ const AuthContext = createContext(null);
 
 export const useAuth = () => useContext(AuthContext);
 
-const API_BASE = import.meta.env.VITE_AUTH_API_URL || 'http://localhost:8082';
+const API_BASE = import.meta.env.VITE_AUTH_API_URL;
 const TOKEN_KEY = 'collabide_token';
 const USER_KEY  = 'collabide_auth_user';
 

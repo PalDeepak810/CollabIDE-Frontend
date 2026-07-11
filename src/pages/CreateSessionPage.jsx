@@ -44,7 +44,7 @@ const CreateSessionPage = () => {
                 throw new Error('Missing user id');
             }
 
-            const API_BASE = import.meta.env.VITE_BACKEND_API_URL || 'http://localhost:8082';
+            const API_BASE = import.meta.env.VITE_BACKEND_API_URL;
             const response = await fetch(`${API_BASE}/api/session`, {
                 method: 'POST',
                 headers: {
