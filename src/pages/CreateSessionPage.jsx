@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useUser } from '../contexts/UserContext';
 import { useAuth } from '../contexts/AuthContext';
-import { v4 as uuidv4 } from 'uuid';
 import { localFileService } from '../services/LocalFileService';
 
 const CreateSessionPage = () => {
@@ -40,25 +39,27 @@ const CreateSessionPage = () => {
         setLocalError(null);
 
         try {
-            if (!user?.userId) {
+            const ownerId = user?.userId || user?.id;
+            if (!ownerId) {
                 throw new Error('Missing user id');
             }
 
-            const API_BASE = import.meta.env.VITE_AUTH_URL;
+            const API_BASE = import.meta.env.VITE_BACKEND_API_URL || 'http://localhost:8082';
             const response = await fetch(`${API_BASE}/api/session`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     Authorization: token ? `Bearer ${token}` : ''
                 },
-                body: JSON.stringify({ ownerId: user.userId })
+                body: JSON.stringify({ ownerId })
             });
             if (!response.ok) {
                 throw new Error(`Create session failed: ${response.status}`);
             }
 
             const data = await response.json();
-            const sessionId = data?.session?.sessionId || data?.sessionId || uuidv4();
+            const sessionId = data?.session?.sessionId;
+            if (!sessionId) throw new Error('No sessionId in response');
             return sessionId;
         } catch (err) {
             console.error("Failed to create session", err);
@@ -133,6 +134,15 @@ const CreateSessionPage = () => {
                         className="w-full py-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 rounded-lg font-bold text-lg shadow-lg hover:shadow-blue-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                     >
                         {isLoading ? 'Creating Workspace...' : 'Create New Session'}
+                    </button>
+
+                    <div className="text-center text-xs text-gray-500">or</div>
+
+                    <button
+                        onClick={() => navigate('/join')}
+                        className="w-full py-4 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg font-bold text-lg transition-colors"
+                    >
+                        Join Existing Session
                     </button>
 
                     <div className="text-center text-xs text-gray-500">or</div>

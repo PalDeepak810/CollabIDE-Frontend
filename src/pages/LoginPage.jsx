@@ -5,16 +5,16 @@ import { useAuth } from '../contexts/AuthContext';
 const LoginPage = () => {
     const { login, isLoading } = useAuth();
     const navigate = useNavigate();
-    const [email, setEmail] = useState('');
+    const [email, setEmail]       = useState('');
     const [password, setPassword] = useState('');
-    const [error, setError] = useState(null);
+    const [error, setError]       = useState(null);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
         setError(null);
         try {
             await login(email, password);
-            navigate('/');
+            navigate('/create');
         } catch (err) {
             setError(err?.message || 'Login failed');
         }
@@ -48,9 +48,7 @@ const LoginPage = () => {
                         />
                     </div>
 
-                    {error && (
-                        <div className="text-red-400 text-sm">{error}</div>
-                    )}
+                    {error && <div className="text-red-400 text-sm">{error}</div>}
 
                     <button
                         type="submit"
@@ -62,7 +60,8 @@ const LoginPage = () => {
                 </form>
 
                 <div className="text-center mt-6 text-sm text-gray-400">
-                    Don’t have an account? <Link to="/register" className="text-blue-400 hover:text-blue-300">Register</Link>
+                    Don't have an account?{' '}
+                    <Link to="/register" className="text-blue-400 hover:text-blue-300">Register</Link>
                 </div>
             </div>
         </div>

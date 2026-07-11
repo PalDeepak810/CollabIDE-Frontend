@@ -21,17 +21,13 @@ export const SessionProvider = ({ children }) => {
     const currentSessionIdRef = useRef(null);
 
     const joinSession = useCallback((sessionId) => {
-        console.log('[SessionContext] joinSession called', {
-            sessionId,
-            isConnectingRef: isConnectingRef.current,
-            currentSessionIdRef: currentSessionIdRef.current,
-            isConnected
-        });
+        if (isConnectingRef.current) return;
+        if (currentSessionIdRef.current === sessionId && isConnected) return;
 
-        // Prevent duplicate connection attempts
-        if (isConnectingRef.current || (currentSessionIdRef.current === sessionId && isConnected)) {
-            console.log('[SessionContext] Already connecting or connected to session:', sessionId);
-            return;
+        // Disconnect from previous session before joining new one
+        if (currentSessionIdRef.current && currentSessionIdRef.current !== sessionId) {
+            webSocketService.disconnect();
+            setIsConnected(false);
         }
 
         isConnectingRef.current = true;
@@ -43,12 +39,10 @@ export const SessionProvider = ({ children }) => {
             isConnectingRef.current = false;
             setIsConnected(true);
 
-            // Subscribe to session topic
             webSocketService.subscribe(`/topic/session/${sessionId}`, (message) => {
                 handleSessionMessage(message);
             });
 
-            // Send join event
             webSocketService.send(`/app/session/${sessionId}/join`, {
                 userId: user.userId,
                 name: user.name,
@@ -62,6 +56,7 @@ export const SessionProvider = ({ children }) => {
             isConnectingRef.current = false;
             currentSessionIdRef.current = null;
             setIsConnected(false);
+            alert('Failed to connect: ' + (error?.headers?.message || 'Authentication failed.'));
         });
     }, [user, tabId, isConnected]);
 

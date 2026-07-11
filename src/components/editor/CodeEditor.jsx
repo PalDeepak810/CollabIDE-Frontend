@@ -4,59 +4,54 @@ import Editor from '@monaco-editor/react';
 const CodeEditor = ({ content, onEdit, filePath, readOnly, onCursorChange, remoteCursors }) => {
     const editorRef = useRef(null);
     const monacoRef = useRef(null);
-    const decorationsRef = useRef([]);
-    const cursorHandlerRef = useRef(null);
     const cursorWidgetsRef = useRef(new Map());
+    const cursorHandlerRef = useRef(null);
+    const isRemoteUpdateRef = useRef(false);
 
     const handleEditorDidMount = (editor, monaco) => {
         editorRef.current = editor;
         monacoRef.current = monaco;
 
-        if (cursorHandlerRef.current) {
-            cursorHandlerRef.current.dispose();
-        }
+        if (cursorHandlerRef.current) cursorHandlerRef.current.dispose();
         cursorHandlerRef.current = editor.onDidChangeCursorPosition((e) => {
             if (!onCursorChange || !filePath) return;
-            const pos = e.position;
-            onCursorChange({
-                filePath,
-                line: pos.lineNumber,
-                column: pos.column
-            });
+            onCursorChange({ filePath, line: e.position.lineNumber, column: e.position.column });
         });
     };
 
     const handleEditorChange = (value, event) => {
-        // If it's a internal update (e.g. from remote sync), we don't want to trigger onEdit
-        // Usually, we distinguish this by checking if the change was made by the user.
-        // For now, let's just process the changes.
-        
-        if (event.isFlush) return; // ignore initial load or reset
+        if (event.isFlush || isRemoteUpdateRef.current) return;
 
         event.changes.forEach(change => {
             const { rangeOffset, rangeLength, text } = change;
-            
-            if (rangeLength > 0) {
-                // DELETE operation
-                onEdit({
-                    type: 'DELETE',
-                    position: rangeOffset,
-                    length: rangeLength,
-                    filePath: filePath
-                });
-            }
-            
-            if (text.length > 0) {
-                // INSERT operation
-                onEdit({
-                    type: 'INSERT',
-                    position: rangeOffset,
-                    text: text,
-                    filePath: filePath
-                });
+            if (rangeLength > 0 && text.length > 0) {
+                // Replace: send as single DELETE+INSERT to keep positions consistent
+                onEdit({ type: 'DELETE', position: rangeOffset, length: rangeLength, filePath });
+                onEdit({ type: 'INSERT', position: rangeOffset, text, filePath });
+            } else if (rangeLength > 0) {
+                onEdit({ type: 'DELETE', position: rangeOffset, length: rangeLength, filePath });
+            } else if (text.length > 0) {
+                onEdit({ type: 'INSERT', position: rangeOffset, text, filePath });
             }
         });
     };
+
+    // Apply remote content without resetting cursor
+    useEffect(() => {
+        const editor = editorRef.current;
+        if (!editor || !content) return;
+
+        const model = editor.getModel();
+        if (!model) return;
+
+        if (model.getValue() === content) return; // no-op if already in sync
+
+        const position = editor.getPosition();
+        isRemoteUpdateRef.current = true;
+        model.setValue(content);
+        isRemoteUpdateRef.current = false;
+        if (position) editor.setPosition(position); // restore cursor
+    }, [content]);
 
     useEffect(() => {
         const editor = editorRef.current;
@@ -125,7 +120,7 @@ const CodeEditor = ({ content, onEdit, filePath, readOnly, onCursorChange, remot
                 height="100%"
                 language={getLanguage(filePath)}
                 theme="vs-dark"
-                value={content}
+                defaultValue={content}
                 onChange={handleEditorChange}
                 onMount={handleEditorDidMount}
                 options={{

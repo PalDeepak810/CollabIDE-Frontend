@@ -1,20 +1,13 @@
-import SockJS from 'sockjs-client';
-import Stomp from 'stompjs';
+import { Client } from '@stomp/stompjs';
 
-// Define the WebSocket endpoints
-const BACKEND_URL = import.meta.env.VITE_WS_URL;
-const WS_PROTOCOL = BACKEND_URL.startsWith('https') ? 'wss' : 'ws';
-const WS_BASE = BACKEND_URL.replace(/^https?:\/\//, '');
-
-const WS_NATIVE_ENDPOINT = `${WS_PROTOCOL}://${WS_BASE}/ws-native`;
-const WS_SOCKJS_ENDPOINT = `${BACKEND_URL}/ws`;
-
+const BACKEND_URL = import.meta.env.VITE_WS_URL || 'http://localhost:8082';
+const WS_URL = BACKEND_URL.replace(/^http/, 'ws') + '/ws-native';
 
 class WebSocketService {
     constructor() {
-        this.stompClient = null;
+        this.client = null;
         this.connected = false;
-        this.connecting = false; // Track if connection is in progress
+        this.connecting = false;
         this.authToken = null;
     }
 
@@ -23,76 +16,61 @@ class WebSocketService {
     }
 
     connect(onConnect, onError) {
-        console.log('[WebSocketService] connect() called', {
-            connected: this.connected,
-            connecting: this.connecting,
-            hasClient: !!this.stompClient
-        });
-
-        // If already connected, just call the callback
-        if (this.stompClient && this.connected) {
-            console.log('[WebSocketService] Already connected, calling onConnect callback');
+        if (this.client && this.connected) {
             if (onConnect) onConnect();
             return;
         }
-
-        // If already connecting, don't start another connection
-        if (this.connecting) {
-            console.log('[WebSocketService] Connection already in progress, ignoring duplicate call');
-            return;
+        if (this.connecting) return;
+        // Clean up any stale client
+        if (this.client) {
+            this.client.deactivate();
+            this.client = null;
         }
-
         this.connecting = true;
-        console.log('[WebSocketService] Starting new WebSocket connection to:', WS_NATIVE_ENDPOINT);
-
-        // Try native WebSocket first for clearer debugging in the browser
-        this.stompClient = Stomp.client(WS_NATIVE_ENDPOINT);
-
-        // Enable debug logs to help diagnose connection issues
-        this.stompClient.debug = (str) => { console.log('STOMP:', str); };
 
         const headers = this.authToken ? { Authorization: `Bearer ${this.authToken}` } : {};
 
-        this.stompClient.connect(headers,
-            () => {
-                console.log('[WebSocketService] Connection SUCCESS (native)');
+        this.client = new Client({
+            brokerURL: WS_URL,
+            connectHeaders: headers,
+            reconnectDelay: 0,
+            onConnect: () => {
                 this.connecting = false;
                 this.connected = true;
                 if (onConnect) onConnect();
             },
-            (error) => {
-                console.error('[WebSocketService] Connection FAILED (native):', error);
+            onStompError: (frame) => {
+                console.error('[WS] STOMP error:', frame);
+                this.connecting = false;
+                this.connected = false;
+                if (onError) onError(frame);
+            },
+            onDisconnect: () => {
+                console.warn('[WS] STOMP disconnected');
+                this.connected = false;
+            },
+            onWebSocketError: (event) => {
+                console.error('[WS] WebSocket error:', event);
+                this.connecting = false;
+                this.connected = false;
+                if (onError) onError(event);
+            },
+            onWebSocketClose: (event) => {
+                console.warn('[WS] WebSocket closed:', event.code, event.reason);
+                this.connecting = false;
+                this.connected = false;
+            },
+        });
 
-                // Fallback to SockJS if native WebSocket fails
-                console.log('[WebSocketService] Falling back to SockJS:', WS_SOCKJS_ENDPOINT);
-                const socket = new SockJS(WS_SOCKJS_ENDPOINT);
-                this.stompClient = Stomp.over(socket);
-                this.stompClient.debug = (str) => { console.log('STOMP:', str); };
-
-                this.stompClient.connect(headers,
-                    () => {
-                        console.log('[WebSocketService] Connection SUCCESS (sockjs)');
-                        this.connecting = false;
-                        this.connected = true;
-                        if (onConnect) onConnect();
-                    },
-                    (sockErr) => {
-                        console.error('[WebSocketService] Connection FAILED (sockjs):', sockErr);
-                        this.connecting = false;
-                        this.connected = false;
-                        if (onError) onError(sockErr);
-                    }
-                );
-            }
-        );
+        this.client.activate();
     }
 
     subscribe(topic, callback) {
-        if (!this.stompClient || !this.connected) {
+        if (!this.client || !this.connected) {
             console.warn('Cannot subscribe: Not connected to WebSocket');
             return null;
         }
-        return this.stompClient.subscribe(topic, (message) => {
+        return this.client.subscribe(topic, (message) => {
             try {
                 callback(JSON.parse(message.body));
             } catch (e) {
@@ -102,28 +80,20 @@ class WebSocketService {
     }
 
     send(destination, body) {
-        if (!this.stompClient || !this.connected) {
+        if (!this.client || !this.connected) {
             console.warn('Cannot send: Not connected to WebSocket');
             return;
         }
-        this.stompClient.send(destination, {}, JSON.stringify(body));
+        this.client.publish({ destination, body: JSON.stringify(body) });
     }
 
     disconnect() {
-        if (this.stompClient) {
-            // Check if STOMP is actually connected before calling disconnect
-            if (this.stompClient.connected) {
-                try {
-                    this.stompClient.disconnect();
-                } catch (e) {
-                    console.warn('Silent error during STOMP disconnect:', e);
-                }
-            }
-            this.stompClient = null;
+        if (this.client) {
+            this.client.deactivate();
+            this.client = null;
         }
         this.connecting = false;
         this.connected = false;
-        console.log('Disconnected from WebSocket');
     }
 }
 

@@ -8,29 +8,31 @@ export const useUser = () => useContext(UserContext);
 
 export const UserProvider = ({ children }) => {
     const { user: authUser } = useAuth();
-    const [user, setUser] = useState(() => {
-        return authUser || {
-            userId: uuidv4(),
-            name: `User-${Math.floor(Math.random() * 1000)}`
-        };
-    });
+
+    // Always derive from authUser when available, fall back to guest only when not authenticated
+    const [user, setUser] = useState(() =>
+        authUser || { userId: uuidv4(), name: `Guest-${Math.floor(Math.random() * 1000)}` }
+    );
+
     const [tabId] = useState(() => {
-        const savedTab = sessionStorage.getItem('collabide_tab_id');
-        if (savedTab) return savedTab;
-        const newTabId = uuidv4();
-        sessionStorage.setItem('collabide_tab_id', newTabId);
-        return newTabId;
+        const saved = sessionStorage.getItem('collabide_tab_id');
+        if (saved) return saved;
+        const id = uuidv4();
+        sessionStorage.setItem('collabide_tab_id', id);
+        return id;
     });
 
+    // Sync whenever auth state changes (login, logout, hydration completes)
     useEffect(() => {
         if (authUser) {
             setUser(authUser);
+        } else {
+            // Logged out — reset to guest
+            setUser({ userId: uuidv4(), name: `Guest-${Math.floor(Math.random() * 1000)}` });
         }
     }, [authUser]);
 
-    const updateName = (name) => {
-        setUser(prev => ({ ...prev, name }));
-    };
+    const updateName = (name) => setUser(prev => ({ ...prev, name }));
 
     return (
         <UserContext.Provider value={{ user, tabId, updateName }}>
